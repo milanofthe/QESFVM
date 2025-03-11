@@ -625,27 +625,6 @@ class Cell:
 
         return grd_x, grd_y
 
-    
-    def flux(self, parameter=None, order=2):
-        """
-        THIS IS NEW AND REQUIRED FOR TIME DOMAIN FVM SOLVERS
-
-        Compute the flux of the cell by fitting a biquadratic polynomial to the cells in 
-        the neighborhood to reconstruct the gradients. Then uses the midpoint rule for 
-        integration of the gradient at the cell faces to compute the flux.
-        """
-
-        f = 0.0
-        for cell in self.get_neighbors():
-            d = np.linalg.norm(cell.center-self.center)
-            a = min(self.size[0], cell.size[0])
-            f += 2 * a * (self.get(parameter) - cell.get(parameter)) / d
-
-        #return the complete flux
-        return f
-
-
-
 
 
 
@@ -799,6 +778,16 @@ class QuadTree:
         return [cell for cell in self.get_leafs() if cell.is_inside_polygon(polygon)]
 
 
+    def get_leafs_inside_polygons(self, polygons=[]):
+        """
+        Retrieve the leaf cells that are within a cutset of multiple polygons
+
+        INPUTS : 
+            polygons : (list of lists of tuples of floats) multiple non closed paths that define polygons
+        """
+        return [cell for cell in self.get_leafs() if np.all([cell.is_inside_polygon(poly) for poly in polygons])]
+
+
     def get_leafs_outside_polygon(self, polygon):
         """
         Retrieve the leaf cells that are outside of a polygon
@@ -809,4 +798,41 @@ class QuadTree:
         return [cell for cell in self.get_leafs() if not cell.is_inside_polygon(polygon)]
 
 
-    
+    def get_leafs_outside_polygons(self, polygons=[]):
+        """
+        Retrieve the leaf cells that are outside a cutset of multiple polygons
+
+        INPUTS : 
+            polygons : (list of lists of tuples of floats) multiple non closed paths that define polygons
+        """
+        return [cell for cell in self.get_leafs() if not np.any([cell.is_inside_polygon(poly) for poly in polygons])]
+
+
+    def get_leafs_at_polygon_boundary(self, polygon):
+        """
+        Retrieve the leaf cells that are directly at the boudnary of a polygon and either 
+        inside or outside the polygon, both lists are returned as a tuple
+
+        INPUTS : 
+            polygon : (list of tuples of floats) non closed path that defines the polygon            
+        """
+
+        cells_at_boundary_inside = []
+        cells_at_boundary_outside = []
+
+        for cell in self.get_leafs():
+            if cell.is_inside_polygon(polygon):
+                for neighbor in cell.get_neighbors():
+                    if not neighbor.is_inside_polygon(polygon):
+                        cells_at_boundary_inside.append(cell)
+                        break
+            else:
+                for neighbor in cell.get_neighbors():
+                    if neighbor.is_inside_polygon(polygon):
+                        cells_at_boundary_outside.append(cell)
+                        break                
+
+        return cells_at_boundary_inside, cells_at_boundary_outside
+
+
+

@@ -30,12 +30,6 @@ def qt_rl(d_max, d_min):
 
 
 
-def segments_from_poly(poly):
-    closed_poly = [*poly, poly[0]] if poly[0] != poly[-1] else poly 
-    return list(zip(closed_poly[:-1], closed_poly[1:])) 
-
-
-
 # INTERPOLATION ========================================================================
 
 def bivariate(points, n):

@@ -27,10 +27,15 @@ from qesfvm.quadtree import QuadTree
 from qesfvm.materials import Material
 from qesfvm.utils import (
     performance_enumerate,
-    segments_from_poly,
     timer, 
     qt_rl
     )
+
+
+
+def segments_from_poly(poly):
+    closed_poly = [*poly, poly[0]] if poly[0] != poly[-1] else poly 
+    return list(zip(closed_poly[:-1], closed_poly[1:])) 
 
 
 
@@ -70,10 +75,10 @@ class Simulation:
                  interfaces=[],
                  d_min=None, 
                  d_max=None, 
-                 boundary_condition_x_min=("neumann", None), 
-                 boundary_condition_x_max=("neumann", None), 
-                 boundary_condition_y_min=("neumann", None), 
-                 boundary_condition_y_max=("neumann", None), 
+                 boundary_condition_x_min=None, 
+                 boundary_condition_x_max=None, 
+                 boundary_condition_y_min=None, 
+                 boundary_condition_y_max=None, 
                  refine_boundary_x_min=False,
                  refine_boundary_x_max=False,
                  refine_boundary_y_min=False,
@@ -96,25 +101,10 @@ class Simulation:
         self.d_max = d_max
 
         # Boundary conditions
-        if isinstance(boundary_condition_x_min, str): 
-            self.boundary_condition_x_min = (boundary_condition_x_min, 0.0)
-        else: 
-            self.boundary_condition_x_min = boundary_condition_x_min
-
-        if isinstance(boundary_condition_x_max, str): 
-            self.boundary_condition_x_max = (boundary_condition_x_max, 0.0)
-        else: 
-            self.boundary_condition_x_max = boundary_condition_x_max
-
-        if isinstance(boundary_condition_y_min, str): 
-            self.boundary_condition_y_min = (boundary_condition_y_min, 0.0)
-        else: 
-            self.boundary_condition_y_min = boundary_condition_y_min
-
-        if isinstance(boundary_condition_y_max, str): 
-            self.boundary_condition_y_max = (boundary_condition_y_max, 0.0)
-        else: 
-            self.boundary_condition_y_max = boundary_condition_y_max
+        self.boundary_condition_x_min = boundary_condition_x_min
+        self.boundary_condition_x_max = boundary_condition_x_max
+        self.boundary_condition_y_min = boundary_condition_y_min
+        self.boundary_condition_y_max = boundary_condition_y_max
 
         # Boundary refinement flags
         self.refine_boundary_x_min = refine_boundary_x_min
@@ -427,135 +417,126 @@ class Simulation:
 
         #iterate the boundary cells
         for cell in self.QT.get_leafs_at_boundary():
-
             i = int(cell.get("idx"))
             w_i, h_i = cell.size
 
             #top boundary cells (N), default is neumann
-            if cell.is_boundary_N():
-
-                kind, value = self.boundary_condition_y_max
-
-                if kind == "dirichlet":
-                    a_ii = 2 * w_i / h_i * g_y(cell, omega)   
-                    Ab[i, i] -= a_ii
-                    bb[i] -= value * a_ii
-
-                elif kind == "periodic":
-                    vertical_neighbors, _ = cell.get_periodic_neighbors()
-
-                    #iterate the periodic neighbors (assuming same size)
-                    for neighbor in vertical_neighbors:
-
-                        #get index of neighbor cell (j)
-                        j = int(neighbor.get("idx"))
-
-                        #get neighbor cell (j) parameters
-                        w_j, h_j = neighbor.size
-
-                        #compute effective conductance
-                        g_y_ij = 2/(1/g_y(cell, omega) + 1/g_y(neighbor, omega))
-
-                        #construct matrix entries
-                        a_ij = w_i / h_i * g_y_ij
-                        Ab[i, i] -= a_ij
-                        Ab[i, j] += a_ij
+            if (self.boundary_condition_y_max is not None) and cell.is_boundary_N():
+                a_ii = 2 * w_i / h_i * g_y(cell, omega)   
+                Ab[i, i] -= a_ii
+                bb[i] -= self.boundary_condition_y_max * a_ii
 
             #bottom boundary cells (S), default is neumann
-            elif cell.is_boundary_S():
-
-                kind, value = self.boundary_condition_y_min
-
-                if kind == "dirichlet":
-                    a_ii = 2 * w_i / h_i * g_y(cell, omega)   
-                    Ab[i, i] -= a_ii
-                    bb[i] -= value * a_ii
-
-                elif kind == "periodic":
-                    vertical_neighbors, _ = cell.get_periodic_neighbors()
-
-                    #iterate the periodic neighbors (assuming same size)
-                    for neighbor in vertical_neighbors:
-
-                        #get index of neighbor cell (j)
-                        j = int(neighbor.get("idx"))
-
-                        #get neighbor cell (j) parameters
-                        w_j, h_j = neighbor.size
-
-                        #compute effective conductance
-                        g_y_ij = 2/(1/g_y(cell, omega) + 1/g_y(neighbor, omega))
-
-                        #construct matrix entries
-                        a_ij = w_i / h_i * g_y_ij
-                        Ab[i, i] -= a_ij
-                        Ab[i, j] += a_ij
+            elif (self.boundary_condition_y_min is not None) and cell.is_boundary_S():
+                a_ii = 2 * w_i / h_i * g_y(cell, omega)   
+                Ab[i, i] -= a_ii
+                bb[i] -= self.boundary_condition_y_min * a_ii
 
             #left boundary cells (W), default is neumann
-            if cell.is_boundary_W():
+            if (self.boundary_condition_x_min is not None) and cell.is_boundary_W():
+                a_ii = 2 * h_i / w_i * g_x(cell, omega)  
+                Ab[i, i] -= a_ii
+                bb[i] -= self.boundary_condition_x_min * a_ii
 
-                kind, value = self.boundary_condition_x_min
-
-                if kind == "dirichlet":
-                    a_ii = 2 * h_i / w_i * g_x(cell, omega)  
-                    Ab[i, i] -= a_ii
-                    bb[i] -= value * a_ii
-
-                elif kind == "periodic":
-
-                    _, horizontal_neighbors = cell.get_periodic_neighbors()
-
-                    #iterate the periodic neighbors (assuming same size)
-                    for neighbor in horizontal_neighbors:
-
-                        #get index of neighbor cell (j)
-                        j = int(neighbor.get("idx"))
-
-                        #get neighbor cell (j) parameters
-                        w_j, h_j = neighbor.size
-
-                        #compute effective conductance
-                        g_x_ij = 2/(1/g_x(cell, omega) + 1/g_x(neighbor, omega))
-
-                        #construct matrix entries
-                        a_ij = h_i / w_i * g_x_ij
-                        Ab[i, i] -= a_ij
-                        Ab[i, j] += a_ij
-
-            #right boundary cells (E), default is neumann
-            elif cell.is_boundary_E():
-
-                kind, value = self.boundary_condition_x_max
-                
-                if kind == "dirichlet":
-                    a_ii = 2 * h_i / w_i * g_x(cell, omega)   
-                    Ab[i, i] -= a_ii
-                    bb[i] -= value * a_ii
-
-                elif kind == "periodic":
-
-                    _, horizontal_neighbors = cell.get_periodic_neighbors()
-
-                    #iterate the periodic neighbors (assuming same size)
-                    for neighbor in horizontal_neighbors:
-
-                        #get index of neighbor cell (j)
-                        j = int(neighbor.get("idx"))
-
-                        #get neighbor cell (j) parameters
-                        w_j, h_j = neighbor.size
-
-                        #compute effective conductance
-                        g_x_ij = 2/(1/g_x(cell, omega) + 1/g_x(neighbor, omega))
-
-                        #construct matrix entries
-                        a_ij = h_i / w_i * g_x_ij
-                        Ab[i, i] -= a_ij
-                        Ab[i, j] += a_ij
+            #right boundary cells (W), default is neumann
+            elif (self.boundary_condition_x_max is not None) and cell.is_boundary_E():
+                a_ii = 2 * h_i / w_i * g_x(cell, omega)   
+                Ab[i, i] -= a_ii
+                bb[i] -= self.boundary_condition_x_max * a_ii
 
         return Ab.tocsr(), bb
 
 
+
+
+
+
+
+
+    # def _build_system_homogeneous(self, omega):
+    #     """
+    #     build linear system with boundary conditions but without ports
+        
+    #     central differences for everything
+    #     """
+
+    #     #setup linear system
+    #     n_cells = len(self.QT)
+    #     Ah = lil_matrix((n_cells, n_cells), dtype=np.complex128)
+
+    #     #helper functions for material parameters
+    #     def g_x(cell, omega):
+    #         return cell.get("sig_x") + 1j * omega * self.eps_0 * cell.get("eps_r_x")
+
+    #     def g_y(cell, omega):
+    #         return cell.get("sig_y") + 1j * omega * self.eps_0 * cell.get("eps_r_y")
+
+                
+    #     #iterate cells to incorporate boundary conditions and materials
+    #     for i, cell in performance_enumerate(self.QT.get_leafs(), log=self.log):
+            
+    #         #get cell (i) parameters
+    #         w_i, h_i = cell.size
+                
+    #         #neighbors on lower (S) and upper (N) boundary
+    #         for neighbor in cell.get_neighbors_S() + cell.get_neighbors_N():
+                
+    #             #get index of neighbor cell (j)
+    #             j = int(neighbor.get("idx"))
+
+    #             #get neighbor cell (j) parameters
+    #             w_j, h_j = neighbor.size
+                
+    #             #effective complex conductivity with matrerial weights
+    #             g_y_ij = (h_i + h_j) / (h_i/g_y(cell, omega) + h_j/g_y(neighbor, omega))
+
+    #             #check if interface between (i) and (j) is defined
+    #             for inter in self.interfaces:
+    #                 if inter.is_interface((i, j)):
+
+    #                     #interface parameters (thickness and complex conductivity)
+    #                     d, g_f = inter.delta, 1j * omega * inter.cap
+
+    #                     #inject complex interface conductivity
+    #                     g_y_ij = (h_i + h_j) / ((h_i-d)/g_y(cell, omega) + 1/g_f + (h_j-d)/g_y(neighbor, omega))   
+
+    #                     break
+
+    #             #incorporate into system
+    #             a_ij = min(w_i, w_j) * 2 * g_y_ij / (h_i + h_j)
+    #             Ah[i, i] -= a_ij
+    #             Ah[i, j] += a_ij
+
+    #         #neighbors on left (W) and right (E) boundary
+    #         for neighbor in cell.get_neighbors_W() + cell.get_neighbors_E():
+                
+    #             #get index of neighbor cell (j)
+    #             j = int(neighbor.get("idx"))
+                
+    #             #get neighbor cell (j) parameters
+    #             w_j, h_j = neighbor.size
+
+    #             #effective complex conductivity with matrerial weights
+    #             g_x_ij = (w_i + w_j) / (w_i/g_x(cell, omega) + w_j/g_x(neighbor, omega))
+
+    #             #check if interface between (i) and (j) is defined
+    #             for inter in self.interfaces:
+    #                 if inter.is_interface((i, j)):
+                        
+    #                     #interface parameters (thickness and complex conductivity)
+    #                     d, g_f = inter.delta, 1j * omega * inter.cap
+                        
+    #                     #inject complex interface conductivity
+    #                     g_x_ij = (w_i + w_j) / ((w_i-d)/g_x(cell, omega) + 1/g_f + (w_j-d)/g_x(neighbor, omega))
+                        
+    #                     break
+                    
+    #             #incorporate into system
+    #             a_ij = min(h_i, h_j) * 2 * g_x_ij / (w_i + w_j)
+    #             Ah[i, i] -= a_ij
+    #             Ah[i, j] += a_ij
+
+    #     return Ah.tocsr()
 
 
 
@@ -586,6 +567,8 @@ class Simulation:
     def _build_system_homogeneous(self, omega):
         """
         build homogeneous linear system without boundary conditions and ports
+
+        with preservation of 2nd order flux at transitions by bilinear interpolation
         """
 
         #setup linear system
@@ -633,11 +616,11 @@ class Simulation:
                     #relevant cells (including shared neighbors)
                     relevant_cells = [cell, neighbor, *cell.get_shared_neighbors(neighbor)]
 
-                    #no neighbors neighbors (same size)
+                    #no neighbors neighbors
                     if len(relevant_cells) == 2:
     
-                        #construct matrix entries 
-                        a_ij = w_i / h_i * g_y_ij
+                        #construct matrix entries
+                        a_ij = min(w_i, w_j) * g_y_ij * 2 / (h_i + h_j)
                         Ah[i, i] -= a_ij
                         Ah[i, j] += a_ij
                     
@@ -684,11 +667,11 @@ class Simulation:
                     #relevant cells (including shared neighbors)
                     relevant_cells = [cell, neighbor, *cell.get_shared_neighbors(neighbor)]
 
-                    #no neighbors neighbors (same size)
+                    #no neighbors neighbors
                     if len(relevant_cells) == 2:
     
                         #construct matrix entries
-                        a_ij = h_i / w_i * g_x_ij
+                        a_ij = min(h_i, h_j) * g_x_ij * 2 / (w_i + w_j)
                         Ah[i, i] -= a_ij 
                         Ah[i, j] += a_ij
                     
@@ -821,6 +804,7 @@ class Simulation:
 
 
 
+
     def solve_multiport(self, omega):
         """
         solve the system for a given frequency for all ports
@@ -839,9 +823,6 @@ class Simulation:
 
         #total number of ports
         n_prt = len(relevant_ports)
-        n_cells = len(self.QT)
-        B1 = np.zeros((n_cells, n_prt), dtype=np.complex128)
-        B2 = np.zeros((n_cells, n_prt), dtype=np.complex128)
 
         #initialize impedance matrix
         Z = np.zeros((n_prt, n_prt), dtype=np.complex128)
@@ -849,28 +830,55 @@ class Simulation:
         self.logger(f"progress - solving for {len(relevant_ports)} relevant ports")
 
         #iterate ports and set excitations
-        for k, prt in enumerate(relevant_ports):
+        for i, prt_i in enumerate(relevant_ports):
 
-            #add inhomogenity from boundary conditions
-            B1[:, k] += bb
+            #first, turn all ports off
+            for j, _ in enumerate(relevant_ports):
+                relevant_ports[j].off()
 
-            #cell indices of port (src) and (snk) points
-            i = prt.src_cell_idx
-            j = prt.snk_cell_idx
+            #then turn on only port (i)
+            relevant_ports[i].on()
+            
+            #build inhomogeneous system part
+            As, bs = self._build_system_inhomogeneous()
 
-            #add inhomogenity from port
-            if i is not None:
-                B1[i, k] -= prt.I_src
-                B2[i, k] -= prt.I_src
-            if j is not None:
-                B1[j, k] += prt.I_src
-                B2[j, k] += prt.I_src
+            #solve complex linear system
+            Phi = spsolve(Ah+Ab+As, bb+bs)
 
-        #solve and map to impedance matrix
-        Z = - np.dot(B2.T, spsolve(Ah+Ab, B1))
+            self.logger(f"progress - Solved for port '{prt_i.label}'")
+
+            #read port volages
+            for j, prt_j in enumerate(relevant_ports):
+                
+                #get cell indices of port points
+                i_src = prt_j.src_cell_idx
+                i_snk = prt_j.snk_cell_idx
+
+                #get potentials at port cells
+                V_a = 0.0 if i_src is None else Phi[i_src]
+                V_b = 0.0 if i_snk is None else Phi[i_snk]
+
+                #port voltage
+                V_prt = V_a - V_b
+
+                #set port voltage as potential difference
+                prt_j.V = V_prt
+
+                #add to matrix as transfer impedance
+                Z[j, i] = V_prt
+
+                self.logger(f"progress - Z{j, i}: port '{prt_i.label}' -> port '{prt_j.label}'")
 
         #return the impedance matrix for given frequency
         return Z
+
+
+
+
+
+
+
+
 
 
 
