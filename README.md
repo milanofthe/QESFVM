@@ -4,6 +4,12 @@ This is a 2D finite volume method that solves the poisson equation for the quasi
 
 The package also implements a novel cell interface modeling technique based on lumped elements. This is used to model doublelayer capacitances for example at electrode-liquid interfaces. A paper about this has been submitted to Helyon (cell press). Simulations and geometries from the paper are available in the `example` directory.
 
+
+## Reference
+
+This is the repository for the paper **A finite volume method with interface capacitance insertion on quad-tree meshes for impedance analysis in microfluidic devices** ([DOI](https://doi.org/10.1016/j.heliyon.2025.e43066)).
+
+
 ## Getting started
 
 We need to import `numpy` and `matplotlib` only for the definition of the structures and for plotting the results
